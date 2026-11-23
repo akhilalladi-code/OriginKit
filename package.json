@@ -1,0 +1,18 @@
+{
+  "name": "origin-kit",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "A local-first creative asset provenance and licensing workspace.",
+  "scripts": {
+    "check": "node scripts/check.mjs",
+    "test": "node --test",
+    "build": "node scripts/build.mjs",
+    "verify": "npm run check && npm run lint && npm test && npm run build",
+    "lint": "node scripts/lint.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "MIT"
+}

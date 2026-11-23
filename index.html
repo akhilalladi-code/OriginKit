@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#111512">
+  <meta name="referrer" content="no-referrer">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' blob: data:; font-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+  <meta name="description" content="A local-first workspace for creative asset provenance, licensing evidence and client-ready attribution handoffs.">
+  <title>OriginKit — Know every asset's story</title>
+  <link rel="icon" href="./assets/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="./styles.css">
+  <script type="module" src="./src/app.js"></script>
+</head>
+<body>
+  <div class="app-shell" id="app">
+    <aside class="sidebar" aria-label="Main navigation">
+      <a class="brand" href="#overview" aria-label="OriginKit overview">
+        <span class="brand-mark">O<span>·</span></span>
+        <span class="brand-copy"><strong>origin<span>kit</span></strong><small>CREATIVE RIGHTS DESK</small></span>
+      </a>
+      <div class="workspace-label">WORKSPACE</div>
+      <nav class="nav-list">
+        <a href="#overview" class="nav-link is-active" data-view="overview"><span class="nav-icon">◫</span> Overview</a>
+        <a href="#assets" class="nav-link" data-view="assets"><span class="nav-icon">▧</span> Asset library <span class="nav-count" id="navAssetCount">0</span></a>
+        <a href="#projects" class="nav-link" data-view="projects"><span class="nav-icon">▦</span> Projects</a>
+        <a href="#exports" class="nav-link" data-view="exports"><span class="nav-icon">↗</span> Handoff & exports</a>
+      </nav>
+      <div class="sidebar-bottom">
+        <div class="privacy-card"><span class="privacy-icon">◉</span><div><strong>Private by design</strong><p>Your files stay in this browser. Nothing is uploaded.</p></div></div>
+        <a href="#settings" class="nav-link" data-view="settings"><span class="nav-icon">⚙</span> Settings</a>
+        <div class="profile-row"><span class="avatar">A</span><span><strong>Local workspace</strong><small>Stored on this device</small></span><span class="local-dot" aria-label="Local storage active"></span></div>
+      </div>
+    </aside>
+
+    <main class="main-area">
+      <header class="topbar">
+        <div class="crumbs"><span>ORIGINKIT</span><span class="crumb-slash">/</span><strong id="currentCrumb">OVERVIEW</strong></div>
+        <div class="topbar-actions">
+          <label class="global-search"><span aria-hidden="true">⌕</span><input id="globalSearch" type="search" placeholder="Search assets, creators, licenses…" aria-label="Search assets"></label>
+          <button class="button button-primary button-small" data-action="add-assets"><span>＋</span> Add assets</button>
+        </div>
+      </header>
+      <div class="mobile-nav" aria-label="Mobile navigation">
+        <a href="#overview" data-view="overview" class="is-active">Overview</a><a href="#assets" data-view="assets">Assets</a><a href="#projects" data-view="projects">Projects</a><a href="#exports" data-view="exports">Exports</a>
+      </div>
+      <section id="viewRoot" class="view-root" tabindex="-1" aria-live="polite">
+        <div class="loading-state"><span class="spinner"></span><span>Opening your local workspace…</span></div>
+      </section>
+      <footer class="app-footer"><span>ORIGINKIT <span class="footer-dot">·</span> LOCAL-FIRST CREATIVE RIGHTS</span><span>Keep the source. Keep the proof. Ship with confidence.</span></footer>
+    </main>
+  </div>
+
+  <input id="filePicker" type="file" multiple hidden>
+  <input id="backupPicker" type="file" accept=".originzip,.zip,application/zip" hidden>
+  <dialog id="recordDialog" class="modal"><div id="dialogContent"></div></dialog>
+  <div id="toastRegion" class="toast-region" role="status" aria-live="polite" aria-atomic="true"></div>
+  <div id="progressRegion" class="progress-region" aria-live="polite"></div>
+</body>
+</html>

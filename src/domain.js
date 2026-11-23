@@ -1,0 +1,175 @@
+export const APP_NAME = 'OriginKit';
+export const SCHEMA_VERSION = 1;
+
+export function isHttpUrl(value) {
+  if (!value) return false;
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' || url.protocol === 'http:';
+  } catch {
+    return false;
+  }
+}
+
+export function readiness(asset, today = new Date().toISOString().slice(0, 10)) {
+  const reasons = [];
+  if (asset.expiresAt && asset.expiresAt < today) {
+    return { status: 'blocked', label: 'Blocked', reasons: ['The recorded license expiry date has passed.'] };
+  }
+
+  const permissions = [
+    ['Commercial use', asset.permissions?.commercialUse],
+    ['Modification', asset.permissions?.modification],
+    ['Redistribution', asset.permissions?.redistribution],
+  ];
+  const denied = permissions.filter(([, value]) => value === false).map(([label]) => label);
+  if (denied.length) {
+    return { status: 'blocked', label: 'Blocked', reasons: denied.map((label) => `${label} is explicitly not permitted.`) };
+  }
+
+  if (!asset.sourceUrl || !isHttpUrl(asset.sourceUrl)) reasons.push('Add a valid source URL.');
+  if (!asset.creator?.trim()) reasons.push('Record the creator or rights holder.');
+  if (!asset.licenseName?.trim()) reasons.push('Record the license or permission basis.');
+  if (!(asset.evidenceUrl && isHttpUrl(asset.evidenceUrl)) && !asset.evidenceNote?.trim()) {
+    reasons.push('Attach a license-evidence URL or describe where the evidence is stored.');
+  }
+  for (const [label, value] of permissions) {
+    if (value !== true) reasons.push(`Confirm whether ${label.toLowerCase()} is permitted.`);
+  }
+  if (!asset.aiOrigin || asset.aiOrigin === 'unknown') reasons.push('Record whether this asset is AI-generated, AI-assisted or not AI-generated.');
+  if (asset.attributionRequired && !asset.attribution?.trim()) reasons.push('Add the required attribution text.');
+
+  return reasons.length
+    ? { status: 'review', label: 'Needs review', reasons }
+    : { status: 'cleared', label: 'Cleared', reasons: ['Required provenance and usage fields are recorded.'] };
+}
+
+export function validateProjectName(value) {
+  const name = String(value ?? '').trim();
+  if (!name) return 'Enter a project name.';
+  if (name.length > 80) return 'Project names must be 80 characters or fewer.';
+  return '';
+}
+
+export function validateAssetRecord(record) {
+  const errors = [];
+  if (!String(record.name ?? '').trim()) errors.push('Asset name is required.');
+  if (record.sourceUrl && !isHttpUrl(record.sourceUrl)) errors.push('Source URL must use http:// or https://.');
+  if (record.evidenceUrl && !isHttpUrl(record.evidenceUrl)) errors.push('Evidence URL must use http:// or https://.');
+  if (record.expiresAt && !/^\d{4}-\d{2}-\d{2}$/.test(record.expiresAt)) errors.push('Expiry must be a valid date.');
+  if (record.attributionRequired && !String(record.attribution ?? '').trim()) errors.push('Attribution text is required when attribution is enabled.');
+  return errors;
+}
+
+export function filterAssets(assets, { query = '', status = 'all', type = 'all', projectId = 'all' } = {}) {
+  const q = query.trim().toLocaleLowerCase();
+  return assets.filter((asset) => {
+    const state = readiness(asset).status;
+    const matchesQuery = !q || [asset.name, asset.creator, asset.provider, asset.licenseName, asset.sourceUrl]
+      .some((value) => String(value ?? '').toLocaleLowerCase().includes(q));
+    return matchesQuery
+      && (status === 'all' || state === status)
+      && (type === 'all' || asset.kind === type)
+      && (projectId === 'all' || asset.projectId === projectId);
+  });
+}
+
+export function summarizeAssets(assets) {
+  return assets.reduce((summary, asset) => {
+    summary.total += 1;
+    summary[readiness(asset).status] += 1;
+    if (asset.duplicateOf) summary.duplicates += 1;
+    return summary;
+  }, { total: 0, cleared: 0, review: 0, blocked: 0, duplicates: 0 });
+}
+
+export function buildManifest(projects, assets) {
+  const projectById = new Map(projects.map((project) => [project.id, project]));
+  return {
+    schema: 'urn:originkit:schema:asset-manifest:v1',
+    schemaVersion: SCHEMA_VERSION,
+    product: APP_NAME,
+    generatedAt: new Date().toISOString(),
+    notice: 'A user-maintained record of provenance and permissions. This manifest is not a legal determination or proof that a license is valid.',
+    projects: projects.map(({ id, name, client, description, createdAt }) => ({ id, name, client, description, createdAt })),
+    assets: assets.map((asset) => {
+      const { file, ...record } = asset;
+      const state = readiness(asset);
+      return {
+        ...record,
+        projectName: projectById.get(asset.projectId)?.name ?? 'Unassigned',
+        rightsStatus: state.status,
+        rightsReasons: state.reasons,
+      };
+    }),
+  };
+}
+
+export function buildAttributions(assets, projects = []) {
+  const projectById = new Map(projects.map((project) => [project.id, project.name]));
+  const lines = ['# Asset attributions', '', `Generated by OriginKit on ${new Date().toISOString().slice(0, 10)}.`, '', '> Attribution text is reproduced from your records. Verify the applicable license and requirements before publishing.', ''];
+  const required = assets.filter((asset) => asset.attributionRequired || asset.attribution?.trim());
+  if (!required.length) lines.push('No attribution entries have been recorded.');
+  for (const asset of required) {
+    lines.push(`## ${asset.name}`, '', `- Project: ${projectById.get(asset.projectId) ?? 'Unassigned'}`);
+    if (asset.creator) lines.push(`- Creator / rights holder: ${asset.creator}`);
+    if (asset.sourceUrl) lines.push(`- Source: ${asset.sourceUrl}`);
+    if (asset.licenseName) lines.push(`- License / permission basis: ${asset.licenseName}`);
+    if (asset.attribution) lines.push('', asset.attribution.trim());
+    lines.push('');
+  }
+  return lines.join('\n');
+}
+
+export function toCsv(assets, projects = []) {
+  const projectById = new Map(projects.map((project) => [project.id, project.name]));
+  const headers = ['Asset', 'Project', 'Kind', 'Creator', 'Provider', 'Source URL', 'License', 'Evidence URL', 'Commercial use', 'Modification', 'Redistribution', 'Attribution required', 'Attribution', 'AI origin', 'Expires', 'Rights status', 'SHA-256'];
+  const rows = assets.map((asset) => {
+    const state = readiness(asset).label;
+    return [asset.name, projectById.get(asset.projectId) ?? 'Unassigned', asset.kind, asset.creator, asset.provider, asset.sourceUrl, asset.licenseName, asset.evidenceUrl, permissionLabel(asset.permissions?.commercialUse), permissionLabel(asset.permissions?.modification), permissionLabel(asset.permissions?.redistribution), asset.attributionRequired ? 'Yes' : 'No', asset.attribution, asset.aiOrigin, asset.expiresAt, state, asset.sha256];
+  });
+  return [headers, ...rows].map((row) => row.map(csvCell).join(',')).join('\r\n');
+}
+
+function permissionLabel(value) {
+  return value === true ? 'Allowed' : value === false ? 'Not allowed' : 'Not recorded';
+}
+
+function csvCell(value) {
+  let text = String(value ?? '');
+  if (/^[=+\-@\t\r]/.test(text)) text = `'${text}`;
+  return /[",\r\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
+}
+
+export function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, (character) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  })[character]);
+}
+
+export function safeFilename(value, fallback = 'originkit-export') {
+  const cleaned = String(value ?? '').normalize('NFKD').replace(/[\\/]+/g, '-').replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/^\.+/, '').replace(/^-+|-+$/g, '').slice(0, 70);
+  return cleaned || fallback;
+}
+
+export function formatBytes(bytes) {
+  if (!Number.isFinite(bytes) || bytes < 0) return '—';
+  if (bytes < 1024) return `${bytes} B`;
+  const units = ['KB', 'MB', 'GB'];
+  let value = bytes / 1024;
+  let index = 0;
+  while (value >= 1024 && index < units.length - 1) { value /= 1024; index += 1; }
+  return `${value.toFixed(value >= 10 ? 0 : 1)} ${units[index]}`;
+}
+
+export function classifyFile(file) {
+  const type = String(file.type ?? '').toLowerCase();
+  const name = String(file.name ?? '').toLowerCase();
+  if (type.startsWith('image/')) return 'image';
+  if (type.startsWith('font/') || /\.(woff2?|ttf|otf|eot)$/.test(name)) return 'font';
+  if (type.startsWith('video/')) return 'video';
+  if (type.startsWith('audio/')) return 'audio';
+  if (type === 'application/pdf' || /\.pdf$/.test(name)) return 'document';
+  if (/\.(psd|ai|eps|indd|sketch|fig|xd|afdesign|afphoto|afpub)$/.test(name)) return 'design';
+  return 'file';
+}
