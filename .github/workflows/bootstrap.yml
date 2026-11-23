@@ -1,0 +1,64 @@
+name: Stage OriginKit source and deploy
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".origin-kit-part-0"
+      - ".origin-kit-part-1"
+      - ".origin-kit-part-2"
+      - ".origin-kit-part-3"
+      - ".github/workflows/bootstrap.yml"
+  workflow_dispatch:
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+  actions: read
+concurrency:
+  group: originkit-bootstrap
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - name: Reassemble and expand staged source
+        run: |
+          cat .origin-kit-part-0 .origin-kit-part-1 .origin-kit-part-2 .origin-kit-part-3 > .origin-kit-source.tar.xz
+          xz -t .origin-kit-source.tar.xz
+          tar -xJf .origin-kit-source.tar.xz
+          rm -f .origin-kit-source.tar.xz .origin-kit-part-0 .origin-kit-part-1 .origin-kit-part-2 .origin-kit-part-3
+          rm -f .github/workflows/bootstrap.yml
+      - name: Run static checks, lint, tests and production build
+        run: npm run verify
+      - name: Commit finished application without rewriting history
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "Build OriginKit creative asset provenance workspace"
+          git push origin HEAD:main
+      - name: Upload GitHub Pages artifact
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: dist
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+      actions: read
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5
